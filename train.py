@@ -3,13 +3,15 @@ import glob
 import json
 
 import tqdm
+import pickle
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from datetime import datetime
 from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, StratifiedKFold
 from torch.utils.data import DataLoader
 
 from model.classifier import Classifier
@@ -24,11 +26,11 @@ class CFG:
     epoch = 100
     n_splits = 5
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    lr = 5e-4
-    batch_size = 32
+    lr = 1e-4
+    batch_size = 8
 
 
-def load_dataset(dataset_path):
+def load_dataset_with_json(dataset_path):
 
     X_train, y_train, max_size, min_size = [], [], [], []
     label_encoder = LabelEncoder()
@@ -50,10 +52,30 @@ def load_dataset(dataset_path):
                 min_size.append(image_min)
 
     y_train = label_encoder.fit_transform(y_train).tolist()
-    dataset = CustomDataset(X_train, y_train, image_size=256, max_size=max_size, min_size=min_size)
+    dataset = CustomDataset(X_train, y_train, image_size=380, max_size=max_size, min_size=min_size)
 
     return dataset, label_encoder
 
+
+def load_dataset_without_json(dataset_path):
+
+    X_train, y_train = [], []
+    label_encoder = LabelEncoder()
+
+    folder_list = sorted(glob.glob(os.path.join(dataset_path, '**')), key=lambda x: int(os.path.basename(x)))
+    for folder in folder_list:
+        folder_name = os.path.basename(folder)
+        images = glob.glob(os.path.join(folder, '*.png'))
+        label = None
+        with open(os.path.join(folder, folder_name)) as fd:
+            label = int(fd.read().strip())
+        labels = [label for _ in range(len(images))]
+        X_train.extend(images)
+        y_train.extend(labels)
+
+    y_train = label_encoder.fit_transform(y_train).tolist()
+    dataset = CustomDataset(X_train, y_train, image_size=380)
+    return dataset, label_encoder
 
 def load_model(num_classes):
 
@@ -64,7 +86,7 @@ def load_model(num_classes):
     return model, optimizer, criterion
 
 
-def train(model, optimizer, criterion, train_loader, valid_loader, fold):
+def train(model, optimizer, criterion, train_loader, valid_loader, fold, dir_path):
 
     best_score = 0
     trainer = Trainer(model, CFG.device, criterion, optimizer)
@@ -82,7 +104,7 @@ def train(model, optimizer, criterion, train_loader, valid_loader, fold):
 
         if trainer.valid_mean_acc > best_score:
             best_score = trainer.valid_mean_acc
-            torch.save(model, f'result/{fold}_fold.pt')
+            torch.save(model, f'result/{dir_path}/{fold}_fold.pt')
 
 
 def main():
@@ -93,11 +115,19 @@ def main():
 
     fix_seed(CFG.seed)
 
-    train_dataset, label_encoder = load_dataset('dataset/train')
+    train_dataset, label_encoder = load_dataset_without_json('new_dataset/train')
 
-    kfold = KFold(n_splits=CFG.n_splits)
 
-    for fold, (train_idx, valid_idx) in enumerate(kfold.split(train_dataset)):
+    # make directory
+    new_directory_path = datetime.now().strftime('%m%d_%H%M')
+    if not os.path.exists(new_directory_path):
+        os.makedirs(f'result/{new_directory_path}')
+
+    pickle.dump(label_encoder, open(f'result/{new_directory_path}/label_encoder.pt', 'wb'))
+
+    kfold = StratifiedKFold(n_splits=CFG.n_splits)
+
+    for fold, (train_idx, valid_idx) in enumerate(kfold.split(train_dataset._X, train_dataset._y)):
 
         train_subsampler = torch.utils.data.SubsetRandomSampler(train_idx)
         valid_subsampler = torch.utils.data.SubsetRandomSampler(valid_idx)
@@ -108,7 +138,7 @@ def main():
         model, optimizer, criterion = load_model(len(label_encoder.classes_))
         model = model.to(CFG.device)
         # print(model)
-        train(model, optimizer, criterion, train_loader, valid_loader, fold)
+        train(model, optimizer, criterion, train_loader, valid_loader, fold, new_directory_path)
         torch.cuda.empty_cache()
 
 

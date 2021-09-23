@@ -4,16 +4,8 @@ import torch
 import numpy as np
 import albumentations as A
 
-from modules.dataset import ImageTransformer
-
 augmenter = A.Compose(
     [
-        A.OneOf([
-            A.HorizontalFlip(),
-            A.VerticalFlip(),
-            # A.RandomRotate90()
-        ]),
-
         A.Cutout(num_holes=30, max_h_size=30, max_w_size=30, fill_value=0)
     ]
 )
@@ -38,10 +30,9 @@ class Trainer:
         y_trues = []
 
         pbar = tqdm.tqdm(enumerate(train_loader), total=len(train_loader), position=0, leave=True)
-        self.optimizer.zero_grad()
 
         for step, (image, label) in pbar:
-
+            self.optimizer.zero_grad()
             images = []
             for im in image:
                 aug_image = augmenter(image=im.numpy())['image']
@@ -49,9 +40,11 @@ class Trainer:
             del image
             images = torch.Tensor(images)
             images = images.to(self.device)
+            # image = image.to(self.device)
             label = label.to(self.device)
 
             output = self.model(images)
+            # output = self.model(image)
             loss = self.criterion(output, label)
             self.train_loss += loss
             sample_num += label.shape[0]
