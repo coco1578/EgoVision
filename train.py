@@ -74,8 +74,8 @@ def load_dataset_without_json(dataset_path):
         y_train.extend(labels)
 
     y_train = label_encoder.fit_transform(y_train).tolist()
-    dataset = CustomDataset(X_train, y_train, image_size=380)
-    return dataset, label_encoder
+    # dataset = CustomDataset(X_train, y_train, image_size=380)
+    return X_train, y_train, label_encoder
 
 def load_model(num_classes):
 
@@ -115,8 +115,7 @@ def main():
 
     fix_seed(CFG.seed)
 
-    train_dataset, label_encoder = load_dataset_without_json('new_dataset/train')
-
+    X_train, y_train, label_encoder = load_dataset_without_json('new_dataset/train')
 
     # make directory
     new_directory_path = datetime.now().strftime('%m%d_%H%M')
@@ -127,13 +126,13 @@ def main():
 
     kfold = StratifiedKFold(n_splits=CFG.n_splits)
 
-    for fold, (train_idx, valid_idx) in enumerate(kfold.split(train_dataset._X, train_dataset._y)):
+    for fold, (train_idx, valid_idx) in enumerate(kfold.split(X_train, y_train)):
 
-        train_subsampler = torch.utils.data.SubsetRandomSampler(train_idx)
-        valid_subsampler = torch.utils.data.SubsetRandomSampler(valid_idx)
+        train_dataset = CustomDataset(X_train[train_idx], y_train[train_idx], image_size=380, train=True)
+        valid_dataset = CustomDataset(X_train[valid_idx], y_train[valid_idx], image_size=380, train=False)
 
-        train_loader = DataLoader(dataset=train_dataset, batch_size=CFG.batch_size, sampler=train_subsampler)
-        valid_loader = DataLoader(dataset=train_dataset, batch_size=CFG.batch_size, sampler=valid_subsampler)
+        train_loader = DataLoader(dataset=train_dataset, batch_size=CFG.batch_size)
+        valid_loader = DataLoader(dataset=valid_dataset, batch_size=CFG.batch_size)
 
         model, optimizer, criterion = load_model(len(label_encoder.classes_))
         model = model.to(CFG.device)

@@ -21,6 +21,11 @@ class CustomDataset(Dataset):
                 transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
             ]
         )
+        self._augmentor = A.Compose(
+            [
+                A.Cutout(num_holes=30, max_h_size=30, max_w_size=30, fill_value=0)
+            ]
+        )
 
     def __len__(self):
 
@@ -48,7 +53,9 @@ class CustomDataset(Dataset):
             image = image[min_y:max_y, min_x:max_x]
 
         image = cv2.resize(image, (self._image_size, self._image_size), interpolation=cv2.INTER_CUBIC)
-        # image = transforms.ToTensor()(image)
+
+        if self._train:
+            image = self._augmentor(image=image)['image']
         image = self._compose(image)
 
         if self._y:

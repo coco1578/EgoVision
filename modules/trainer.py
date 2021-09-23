@@ -4,6 +4,8 @@ import torch
 import numpy as np
 import albumentations as A
 
+from utils import rand_bbox
+
 augmenter = A.Compose(
     [
         A.Cutout(num_holes=30, max_h_size=30, max_w_size=30, fill_value=0)
@@ -33,19 +35,25 @@ class Trainer:
 
         for step, (image, label) in pbar:
             self.optimizer.zero_grad()
-            images = []
-            for im in image:
-                aug_image = augmenter(image=im.numpy())['image']
-                images.append(aug_image.tolist())
-            del image
-            images = torch.Tensor(images)
-            images = images.to(self.device)
-            # image = image.to(self.device)
+
+            image = image.to(self.device)
             label = label.to(self.device)
 
-            output = self.model(images)
-            # output = self.model(image)
-            loss = self.criterion(output, label)
+            # cut mix
+            if np.random.random() > 0.5:
+                lam = np.random.beta(1., 1.)
+                rand_index = torch.randperm(image.size()[0]).to(self.device)
+                target_a = label
+                target_b = label[rand_index]
+                bbx1, bby1, bbx2, bby2 = rand_bbox(image.size(), lam)
+                lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (image.size()[-1] * image.size()[-2]))
+                output = self.model(image)
+                loss = self.criterion(output, target_a) * lam + self.criterion(output, target_b) * (1. - lam)
+
+            else:
+                output = self.model(image)
+                loss = self.criterion(output, label)
+
             self.train_loss += loss
             sample_num += label.shape[0]
             y_pred = np.argmax(output.data.cpu().numpy(), axis=1)
