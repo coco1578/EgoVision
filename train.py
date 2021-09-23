@@ -77,6 +77,7 @@ def load_dataset_without_json(dataset_path):
     # dataset = CustomDataset(X_train, y_train, image_size=380)
     return X_train, y_train, label_encoder
 
+
 def load_model(num_classes):
 
     model = Classifier(num_classes=num_classes)
@@ -120,7 +121,7 @@ def main():
     # make directory
     new_directory_path = datetime.now().strftime('%m%d_%H%M')
     if not os.path.exists(new_directory_path):
-        os.makedirs(f'result/{new_directory_path}')
+        os.makedirs(f'result/{new_directory_path}', exist_ok=True)
 
     pickle.dump(label_encoder, open(f'result/{new_directory_path}/label_encoder.pt', 'wb'))
 
